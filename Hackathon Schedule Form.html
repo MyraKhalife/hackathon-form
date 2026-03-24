@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Hackathon — Schedule Mapping</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<!--
+  ============================================================
+  SETUP INSTRUCTIONS — READ BEFORE SHARING
+  ============================================================
+
+  STEP 1 — Create a Google Sheet
+  --------------------------------
+  1. Go to sheets.google.com and create a new spreadsheet.
+  2. Name it: "Hackathon Schedule Responses"
+  3. Leave it empty — the script will create the header row automatically.
+
+  STEP 2 — Add the Apps Script
+  --------------------------------
+  1. In the Sheet, click Extensions → Apps Script.
+  2. Delete any existing code and paste the full script below.
+  3. Click Save (floppy disk icon).
+
+  STEP 3 — Deploy as a Web App
+  --------------------------------
+  1. Click Deploy → New deployment.
+  2. Click the gear icon next to "Select type" and choose Web app.
+  3. Set:
+       Description:     Hackathon Form Receiver
+       Execute as:      Me
+       Who has access:  Anyone
+  4. Click Deploy, then Authorize when prompted (log in with your Google account).
+  5. Copy the Web App URL — it looks like:
+     https://script.google.com/macros/s/XXXXXXXXXX/exec
+
+  STEP 4 — Paste the URL into this file
+  --------------------------------
+  Find the line below that says:
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9oWMIzvsX89UoVjXI40dN5xln5sUDHu0mhZYGPwXwncb71irnhauswj6UQvbiZihw/exec';
+  Replace the placeholder with your copied URL. Save the file.
+
+  STEP 5 — Share the form
+  --------------------------------
+  Host this HTML file anywhere (SharePoint, email attachment, 
+  Google Drive shared link, or a simple file server).
+  When someone submits, a new row appears in the Sheet instantly.
+
+  ============================================================
+  APPS SCRIPT — PASTE THIS INTO YOUR APPS SCRIPT EDITOR
+  ============================================================
+
+  function doPost(e) {
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+      var data = JSON.parse(e.postData.contents);
+
+      // Build header row on first submission
+      if (sheet.getLastRow() === 0) {
+        var headers = [
+          'Timestamp', 'Name', 'Division', 'Work Focus',
+          // Day 1 slots
+          'D1 09-10 Activity', 'D1 09-10 Notes',
+          'D1 10-11 Activity', 'D1 10-11 Notes',
+          'D1 11-12 Activity', 'D1 11-12 Notes',
+          'D1 13-14 Activity', 'D1 13-14 Notes',
+          'D1 14-15 Activity', 'D1 14-15 Notes',
+          'D1 15-16 Activity', 'D1 15-16 Notes',
+          'D1 16-17 Activity', 'D1 16-17 Notes',
+          'D1 17-18 Activity', 'D1 17-18 Notes',
+          // Day 2 slots
+          'D2 09-10 Activity', 'D2 09-10 Notes',
+          'D2 10-11 Activity', 'D2 10-11 Notes',
+          'D2 11-12 Activity', 'D2 11-12 Notes',
+          'D2 13-14 Activity', 'D2 13-14 Notes',
+          'D2 14-15 Activity', 'D2 14-15 Notes',
+          'D2 15-16 Activity', 'D2 15-16 Notes',
+          'D2 16-17 Activity', 'D2 16-17 Notes',
+          'D2 17-18 Activity', 'D2 17-18 Notes',
+          // Extra
+          'Facilitator Notes'
+        ];
+        sheet.appendRow(headers);
+        // Bold + freeze header row
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+        sheet.setFrozenRows(1);
+      }
+
+      // Build data row
+      var row = [
+        new Date().toISOString(),
+        data.name,
+        data.division,
+        data.focus
+      ];
+
+      ['day1', 'day2'].forEach(function(day) {
+        (data.schedule[day] || []).forEach(function(slot) {
+          row.push(slot.activity || '');
+          row.push(slot.note || '');
+        });
+      });
+
+      row.push(data.facilitatorNotes || '');
+      sheet.appendRow(row);
+
+      return ContentService
+        .createTextOutput(JSON.stringify({ status: 'ok' }))
+        .setMimeType(ContentService.MimeType.JSON);
+
+    } catch(err) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // Test function — run this manually in the editor to verify sheet access
+  function testSheet() {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    Logger.log('Sheet name: ' + sheet.getName());
+    Logger.log('Setup OK');
+  }
+
+  ============================================================
+-->
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #1A2B4A;
+    --navy-mid: #243a61;
+    --navy-light: #e8edf5;
+    --red: #C0392B;
+    --ink: #1a1a1a;
+    --muted: #6b7280;
+    --faint: #f4f5f7;
+    --border: #e2e5ea;
+    --white: #ffffff;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  body {
+    font-family: var(--font);
+    background: #f0f2f5;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 2.5rem 1rem 4rem;
+  }
+
+  .page { max-width: 780px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    background: var(--navy);
+    border-radius: var(--radius-lg);
+    padding: 2rem 2.5rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    right: -30px; top: -30px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+  }
+  .header-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .header p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.6;
+  }
+  .header-dates {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .date-pill {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.75);
+  }
+
+  /* Card */
+  .card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--faint);
+  }
+  .card-header-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .day-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+  }
+  .day1 .day-badge { background: var(--navy-light); color: var(--navy); }
+  .day2 .day-badge { background: #eaf3df; color: #2e6010; }
+
+  /* Details */
+  .details-body { padding: 20px 24px; }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 600px) { .field-grid { grid-template-columns: 1fr; } }
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 5px;
+    letter-spacing: 0.02em;
+  }
+  .field input[type="text"],
+  .field select {
+    width: 100%;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    appearance: none;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field input[type="text"]:focus,
+  .field select:focus { border-color: var(--navy); }
+  .select-wrap { position: relative; }
+  .select-wrap::after {
+    content: '';
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    width: 0; height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--muted);
+    pointer-events: none;
+  }
+
+  /* Time grid */
+  .schedule-body { padding: 0 24px 20px; }
+  .time-grid {
+    display: grid;
+    grid-template-columns: 90px 1fr 1fr;
+  }
+  .grid-head {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 14px 0 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .grid-head:not(:first-child) { padding-left: 10px; }
+
+  .slot-time {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    padding: 6px 10px 6px 0;
+    border-bottom: 1px solid #f0f1f3;
+    display: flex;
+    align-items: center;
+  }
+  .slot-sel-cell {
+    padding: 5px 8px 5px 10px;
+    border-bottom: 1px solid #f0f1f3;
+    display: flex;
+    align-items: center;
+  }
+  .slot-txt-cell {
+    padding: 5px 0 5px 8px;
+    border-bottom: 1px solid #f0f1f3;
+    display: flex;
+    align-items: center;
+  }
+  .slot-select {
+    width: 100%;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px 8px;
+    appearance: none;
+    outline: none;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .slot-select:hover { background: var(--faint); border-color: var(--border); }
+  .slot-select:focus { background: var(--faint); border-color: var(--navy); }
+  .slot-text {
+    width: 100%;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px 8px;
+    outline: none;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .slot-text::placeholder { color: #bcc1cc; font-size: 12px; }
+  .slot-text:hover { background: var(--faint); border-color: var(--border); }
+  .slot-text:focus { background: var(--faint); border-color: var(--navy); }
+
+  /* Lunch */
+  .lunch-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #c0c4cc;
+    padding: 6px 10px 6px 0;
+    border-bottom: 1px solid #f0f1f3;
+    display: flex;
+    align-items: center;
+  }
+  .lunch-span {
+    grid-column: 2 / -1;
+    padding: 6px 0 6px 10px;
+    border-bottom: 1px solid #f0f1f3;
+    font-size: 12px;
+    color: #c0c4cc;
+    font-style: italic;
+  }
+
+  /* Legend */
+  .legend-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 0 4px;
+    align-items: center;
+  }
+  .legend-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .legend-pill {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+  }
+
+  /* Notes */
+  .notes-card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .notes-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .notes-card textarea {
+    width: 100%;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--faint);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    line-height: 1.6;
+    transition: border-color 0.15s;
+  }
+  .notes-card textarea:focus { border-color: var(--navy); background: #fff; }
+  .notes-card textarea::placeholder { color: #bcc1cc; }
+
+  /* Submit */
+  .submit-row { display: flex; align-items: center; gap: 14px; }
+  .btn-submit {
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 11px 28px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn-submit:hover { background: var(--navy-mid); }
+  .btn-submit:active { transform: scale(0.98); }
+  .btn-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+  .submit-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .status-msg {
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    display: none;
+  }
+  .status-msg.success { background: #eaf5f0; border: 1px solid #b2dbc8; color: #1d6b46; }
+  .status-msg.error   { background: #fdf0ee; border: 1px solid #f5c4b3; color: #993C1D; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-tag">Beyond Group · Internal · Confidential</div>
+    <h1>AI Hackathon — Schedule Mapping</h1>
+    <p>Map out your two days so we can introduce the right AI tools at the right moment.</p>
+    <div class="header-dates">
+      <span class="date-pill">Day 1 · Thu 26 Mar</span>
+      <span class="date-pill">Day 2 · Fri 27 Mar</span>
+    </div>
+  </div>
+
+  <!-- Your details -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-title">Your details</span>
+    </div>
+    <div class="details-body">
+      <div class="field-grid">
+        <div class="field">
+          <label>Full name *</label>
+          <input type="text" id="f-name" placeholder="e.g. Sara Khalil" />
+        </div>
+        <div class="field">
+          <label>Division *</label>
+          <div class="select-wrap">
+            <select id="f-division">
+              <option value="">Select...</option>
+              <option>Management Consulting</option>
+              <option>Development Consulting</option>
+              <option>Shared Services</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend-bar">
+    <span class="legend-label">Activity key:</span>
+    <span class="legend-pill" style="background:#eaf3df;color:#27500A;border-color:#c3ddb0;">Internal meeting</span>
+    <span class="legend-pill" style="background:#deeaf7;color:#0C447C;border-color:#b0ccec;">Client call</span>
+    <span class="legend-pill" style="background:#e6f1fb;color:#185FA5;border-color:#b5d4f4;">Proposal / writing</span>
+    <span class="legend-pill" style="background:#faeeda;color:#633806;border-color:#f0d0a0;">Research / analysis</span>
+    <span class="legend-pill" style="background:#fbeaf0;color:#72243E;border-color:#f4c0d1;">Review / editing</span>
+    <span class="legend-pill" style="background:#eeedfe;color:#3C3489;border-color:#cecbf6;">AI tool testing</span>
+    <span class="legend-pill" style="background:#faece7;color:#993C1D;border-color:#f0b8a5;">Presentation / slides</span>
+    <span class="legend-pill" style="background:#f3f4f6;color:#9ca3af;border-color:#e2e5ea;">Break / unavailable</span>
+  </div>
+
+  <!-- Day 1 -->
+  <div class="card day1">
+    <div class="card-header">
+      <span class="day-badge">Day 1</span>
+      <span class="card-header-title">Thursday, 26 March 2026</span>
+    </div>
+    <div class="schedule-body">
+      <div class="time-grid" id="grid-day1">
+        <div class="grid-head">Time</div>
+        <div class="grid-head">Activity</div>
+        <div class="grid-head">Notes (optional)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day 2 -->
+  <div class="card day2">
+    <div class="card-header">
+      <span class="day-badge">Day 2</span>
+      <span class="card-header-title">Friday, 27 March 2026</span>
+    </div>
+    <div class="schedule-body">
+      <div class="time-grid" id="grid-day2">
+        <div class="grid-head">Time</div>
+        <div class="grid-head">Activity</div>
+        <div class="grid-head">Notes (optional)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Facilitator notes -->
+  <div class="notes-card">
+    <div class="notes-label">Notes for facilitators (optional)</div>
+    <textarea id="f-notes" placeholder="Hard deadlines, constraints, tools you're curious about..."></textarea>
+  </div>
+
+  <!-- Submit -->
+  <div class="submit-row">
+    <button class="btn-submit" id="btn-submit" onclick="submitForm()">Submit schedule</button>
+    <span class="submit-note">Responses go to the hackathon facilitation team only.</span>
+  </div>
+  <div class="status-msg" id="status-msg"></div>
+
+</div>
+
+<script>
+  // ── PASTE YOUR APPS SCRIPT WEB APP URL HERE ──────────────────
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9oWMIzvsX89UoVjXI40dN5xln5sUDHu0mhZYGPwXwncb71irnhauswj6UQvbiZihw/exec';
+  // ─────────────────────────────────────────────────────────────
+
+  const SLOTS = [
+    '9:00 – 10:00',
+    '10:00 – 11:00',
+    '11:00 – 12:00',
+    null,
+    '13:00 – 14:00',
+    '14:00 – 15:00',
+    '15:00 – 16:00',
+    '16:00 – 17:00',
+    '17:00 – 18:00',
+  ];
+
+  const ACTIVITIES = [
+    'Internal meeting',
+    'Client call',
+    'Proposal / writing',
+    'Research / analysis',
+    'Review / editing',
+    'AI tool testing',
+    'Presentation / slides',
+    'Break / unavailable',
+  ];
+
+  const COLORS = {
+    'Internal meeting':      { bg: '#eaf3df', color: '#27500A' },
+    'Client call':           { bg: '#deeaf7', color: '#0C447C' },
+    'Proposal / writing':    { bg: '#e6f1fb', color: '#185FA5' },
+    'Research / analysis':   { bg: '#faeeda', color: '#633806' },
+    'Review / editing':      { bg: '#fbeaf0', color: '#72243E' },
+    'AI tool testing':       { bg: '#eeedfe', color: '#3C3489' },
+    'Presentation / slides': { bg: '#faece7', color: '#993C1D' },
+    'Break / unavailable':   { bg: '#f3f4f6', color: '#9ca3af' },
+  };
+
+  function buildGrid(gridId, dayNum) {
+    const grid = document.getElementById(gridId);
+    SLOTS.forEach((slot, i) => {
+      if (slot === null) {
+        const t = document.createElement('div');
+        t.className = 'lunch-time';
+        t.textContent = '12:00 – 13:00';
+        const s = document.createElement('div');
+        s.className = 'lunch-span';
+        s.textContent = 'Lunch break';
+        grid.appendChild(t);
+        grid.appendChild(s);
+        return;
+      }
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'slot-time';
+      timeEl.textContent = slot;
+
+      const selCell = document.createElement('div');
+      selCell.className = 'slot-sel-cell';
+      const sel = document.createElement('select');
+      sel.className = 'slot-select';
+      sel.id = `d${dayNum}_s${i}_act`;
+      sel.innerHTML = `<option value="">— select —</option>` +
+        ACTIVITIES.map(a => `<option value="${a}">${a}</option>`).join('');
+      sel.addEventListener('change', function() {
+        const c = COLORS[this.value];
+        if (c) {
+          this.style.background = c.bg;
+          this.style.color = c.color;
+          this.style.fontWeight = '500';
+          this.style.borderColor = 'transparent';
+        } else {
+          this.style.background = '';
+          this.style.color = '';
+          this.style.fontWeight = '';
+          this.style.borderColor = '';
+        }
+      });
+      selCell.appendChild(sel);
+
+      const txtCell = document.createElement('div');
+      txtCell.className = 'slot-txt-cell';
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.className = 'slot-text';
+      txt.id = `d${dayNum}_s${i}_note`;
+      txt.placeholder = 'Add details...';
+      txtCell.appendChild(txt);
+
+      grid.appendChild(timeEl);
+      grid.appendChild(selCell);
+      grid.appendChild(txtCell);
+    });
+  }
+
+  buildGrid('grid-day1', 1);
+  buildGrid('grid-day2', 2);
+
+  function collectData() {
+    const data = {
+      name: document.getElementById('f-name').value.trim(),
+      division: document.getElementById('f-division').value,
+      focus: '',
+      facilitatorNotes: document.getElementById('f-notes').value.trim(),
+      schedule: { day1: [], day2: [] }
+    };
+    [1, 2].forEach(day => {
+      SLOTS.forEach((slot, i) => {
+        if (!slot) return;
+        const act = document.getElementById(`d${day}_s${i}_act`);
+        const note = document.getElementById(`d${day}_s${i}_note`);
+        data.schedule[`day${day}`].push({
+          time: slot,
+          activity: act ? act.value : '',
+          note: note ? note.value.trim() : ''
+        });
+      });
+    });
+    return data;
+  }
+
+  function showStatus(type, msg) {
+    const el = document.getElementById('status-msg');
+    el.className = 'status-msg ' + type;
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function submitForm() {
+    const data = collectData();
+    if (!data.name)     { showStatus('error', 'Please enter your name.'); return; }
+    if (!data.division) { showStatus('error', 'Please select your team / division.'); return; }
+
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    if (APPS_SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbw9oWMIzvsX89UoVjXI40dN5xln5sUDHu0mhZYGPwXwncb71irnhauswj6UQvbiZihw/exec') {
+      // Dev mode: log to console if URL not set yet
+      console.log('Submission data:', JSON.stringify(data, null, 2));
+      showStatus('success', 'Dev mode: data logged to console. Paste your Apps Script URL to enable live submission.');
+      btn.textContent = 'Submit schedule';
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      showStatus('success', 'Schedule submitted. We\'ll assign your AI tools before the session starts.');
+      btn.textContent = 'Submitted';
+    } catch (err) {
+      showStatus('error', 'Submission failed. Please try again or contact the facilitation team.');
+      btn.textContent = 'Submit schedule';
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
