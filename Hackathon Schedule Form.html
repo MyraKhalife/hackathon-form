@@ -559,7 +559,6 @@
     '9:00 – 10:00',
     '10:00 – 11:00',
     '11:00 – 12:00',
-    null,
     '13:00 – 14:00',
     '14:00 – 15:00',
     '15:00 – 16:00',
@@ -592,17 +591,7 @@
   function buildGrid(gridId, dayNum) {
     const grid = document.getElementById(gridId);
     SLOTS.forEach((slot, i) => {
-      if (slot === null) {
-        const t = document.createElement('div');
-        t.className = 'lunch-time';
-        t.textContent = '12:00 – 13:00';
-        const s = document.createElement('div');
-        s.className = 'lunch-span';
-        s.textContent = 'Lunch break';
-        grid.appendChild(t);
-        grid.appendChild(s);
-        return;
-      }
+if (slot === null) { return; }
 
       const timeEl = document.createElement('div');
       timeEl.className = 'slot-time';
